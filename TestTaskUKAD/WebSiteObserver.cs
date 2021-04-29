@@ -2,7 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml;
@@ -13,94 +15,91 @@ namespace TestTaskUKAD
     {
         HtmlWeb HtmlWeb { get; set; }
         Uri BaseUri { get; set; }
-        List<Uri> VisitedList { get; set; }
+        List<Uri> SeenList { get; set; }
         List<Uri> WebSiteUriList { get; set; }
 
+        public HttpClient Client { get; set; }
 
         public WebSiteObserver(Uri baseUri)
         {
             this.BaseUri = baseUri;
-            VisitedList = new List<Uri>();
+            SeenList = new List<Uri>();
             HtmlWeb = new HtmlWeb();
             WebSiteUriList = new List<Uri>();
+            Client = new HttpClient();
         }
 
-        public List<Uri> WebSiteUries(Uri uri)
-        {
-            if ((uri.Host == BaseUri.Host) && (!VisitedList.Contains(uri)))
-            {
-                VisitedList.Add(uri);
 
-                var bufferList = WebPageUries(uri);
-                if (bufferList.Count > 0)
+        public async Task<List<Uri>> WebSiteUries(Uri uri)
+        {
+            var VisitedListLocal = new List<Uri>();
+
+            VisitedListLocal.Add(uri);
+            var uncheckedList = await WebPageUries(uri);           
+
+            while (uncheckedList.Count > 0)
+            {
+                if ((uncheckedList[0].Scheme == BaseUri.Scheme) && (uncheckedList[0].Host == BaseUri.Host) && (!VisitedListLocal.Contains(uncheckedList[0])))
                 {
-                    int limitCounter = 0;
-                    foreach (Uri u in bufferList)
+                    var a = await WebPageUries(uncheckedList[0]);
+                    if (a.Count > 0)
                     {
-                        if (!WebSiteUriList.Contains(u))
-                        {
-                            if (limitCounter < Limiter.TotalLimit)///
-                            {
-                                WebSiteUriList.Add(u);
-                                limitCounter++;
-                            }
-                        }
-                        WebSiteUries(u);
+                        uncheckedList.AddRange(a);
+                        VisitedListLocal.Add(uncheckedList[0]);
                     }
+                    else break;
                 }
+                uncheckedList.RemoveAt(0);
+                uncheckedList = uncheckedList.Distinct().ToList();
             }
-            Logger.Log("WebSite url list created.", WebSiteUriList);
-            return WebSiteUriList;
+            Logger.Log("Crawler list created.", VisitedListLocal);
+            return VisitedListLocal;
         }
 
-        public List<Uri> SiteMapUries()
+        public async Task<List<Uri>> SiteMapUries()
         {
-            var client = new WebClient();
-            var robotsUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "robots.txt", "").Uri.ToString();
-            var robotsFileText = string.Empty;
-            robotsFileText = client.DownloadString(robotsUri).ToLower();
-            Logger.Log($"WebClient {robotsUri} loading done.");
-
             var uriList = new List<Uri>();
-            if (robotsFileText.Length > 0)
+            var robotsUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "robots.txt", "").Uri.ToString();
+            using (var response = await Client.GetAsync(robotsUri, HttpCompletionOption.ResponseContentRead))
             {
-                var siteMapAddresList = Regex.Matches(robotsFileText, @"(?<=sitemap:\s).+");
-                foreach (Match addres in siteMapAddresList)
+                if (response.IsSuccessStatusCode)
                 {
-                    uriList.AddRange(ExtractUriList(new Uri(addres.Value)));
+                    var robotsFileText = await response.Content.ReadAsStringAsync();
+                    Logger.Log($"{robotsUri} loading done.");
+
+
+                    if (robotsFileText.Length > 0)
+                    {
+                        var siteMapAddresList = Regex.Matches(robotsFileText, @"(?<=sitemap:\s).+");
+                        foreach (Match addres in siteMapAddresList)
+                        {
+                            uriList.AddRange(ExtractUriList(new Uri(addres.Value)));
+                        }
+                    }
+                    else
+                    {
+                        uriList = ExtractUriList(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "sitemap.xml", "").Uri);
+                    }
+                    Logger.Log("SiteMap url list created.", uriList);
                 }
             }
-            else
-            {
-                uriList = ExtractUriList(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "sitemap.xml", "").Uri);
-            }
-            Logger.Log("SiteMap url list created.", uriList);
             return uriList;
         }
 
         public Dictionary<Uri, double> ResponseTimeSaver(List<Uri> uriList)
         {
-
             var dicrionaryListBuffer = new Dictionary<Uri, double>();
-            var stopwatch = new Stopwatch();
-            int limitCounter = 0;
-            Logger.Log("Starts loading pages to save response time.");
             foreach (var uri in uriList)
             {
                 try
                 {
                     if (uri.Host == BaseUri.Host)
                     {
-                        if (limitCounter < Limiter.TotalLimit)///
-                        {
-                            stopwatch.Start();
-                            HtmlWeb.Load(uri);
-                            stopwatch.Stop();
-
-
-                            dicrionaryListBuffer.Add(uri, stopwatch.Elapsed.TotalMilliseconds);
-                            limitCounter++;
-                        }
+                        var stopwatch = new Stopwatch();
+                        stopwatch.Start();
+                        HtmlWeb.Load(uri);
+                        stopwatch.Stop();
+                        dicrionaryListBuffer.Add(uri, stopwatch.Elapsed.TotalMilliseconds);
                     }
                 }
                 catch (Exception)
@@ -118,72 +117,62 @@ namespace TestTaskUKAD
             var xmlDocument = new XmlDocument();
             try
             {
-                int limitCounter = 0;
                 xmlDocument.Load(sitemapUri.ToString());
                 Logger.Log($"XmlDocument {sitemapUri.ToString()} loading done.");
 
                 var xmlNodeList = xmlDocument.GetElementsByTagName("loc");
                 foreach (XmlNode xmlNode in xmlNodeList)
                 {
-                    if (limitCounter < Limiter.TotalLimit)///
-                    {
-                        uriList.Add(new Uri(xmlNode.InnerText.ToString()));
-                        limitCounter++;
-                    }
+                    uriList.Add(new Uri(xmlNode.InnerText.ToString()));
                 }
-                Logger.Log($"Url list from SiteMap {sitemapUri.ToString()} extracred.", uriList);
-                return uriList;
+                Logger.Log($"Url list from SiteMap {sitemapUri.ToString()} extracted.", uriList);
             }
             catch (Exception)
             {
                 Logger.Log("Extraction urls from SiteMap files failure!");
-                return new List<Uri>();
             }
-
+            return uriList;
         }
 
-        private List<Uri> WebPageUries(Uri pageUri)
+        private async Task<List<Uri>> WebPageUries(Uri uri)
         {
+            var uriList = new List<Uri>();
             try
             {
-                var stopwatch = new Stopwatch();
-                var htmlPageText = HtmlWeb.Load(pageUri).Text;
-                Logger.Log($"HtmlWeb {pageUri.ToString()} loading done.");
-
-                Regex regex = new Regex(@"href\s*=\s*(?:[""'](?<1>[^""']*)[""']|(?<1>\S+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-                MatchCollection matches = regex.Matches(htmlPageText);
-
-                var uriList = new List<Uri>();
-                if (matches.Count > 0)
+                var pageText = string.Empty;
+                using (var response = await Client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead))
                 {
-                    int limitCounter = 0;
-                    foreach (Match match in matches)
+                    if (response.IsSuccessStatusCode && response.Content.Headers.ContentType.MediaType == "text/html")
                     {
-                        if (IsFullUri(match.Groups[1].ToString()))
+                        if ((uri.Scheme == this.BaseUri.Scheme) && (uri.Host == this.BaseUri.Host))
                         {
-                            if (limitCounter < Limiter.TotalLimit)
+                            pageText = await response.Content.ReadAsStringAsync();
+                            Regex regex = new Regex(@"href\s*=\s*(?:[""'](?<1>[^""']*)[""']|(?<1>\S+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                            MatchCollection matches = regex.Matches(pageText);
+                            if (matches.Count > 0)
                             {
-                                uriList.Add(new Uri(match.Groups[1].ToString()));
-                                limitCounter++;
-                            }
-                        }
-                        else
-                        {
-                            if (limitCounter < Limiter.TotalLimit)
-                            {
-                                uriList.Add(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: match.Groups[1].ToString(), "").Uri);
-                                limitCounter++;
+                                foreach (Match match in matches)
+                                {
+                                    var tempUri = uri;
+                                    if (IsFullUri(match.Groups[1].ToString()))
+                                    {
+                                        tempUri = new Uri(match.Groups[1].ToString());
+                                    }
+                                    else
+                                    {
+                                        tempUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: match.Groups[1].ToString(), "").Uri;
+                                    }
+                                    uriList.Add(tempUri);
+                                }
                             }
                         }
                     }
                 }
-                Logger.Log("WebPage url list created.", uriList);
-                return uriList;
             }
             catch (Exception)
             {
-                return new List<Uri>();
             }
+            return uriList;
         }
 
         private bool IsFullUri(string uri)
@@ -204,10 +193,8 @@ namespace TestTaskUKAD
         {
             GC.SuppressFinalize(this);
         }
+
     }
-
-
-
 }
 
 

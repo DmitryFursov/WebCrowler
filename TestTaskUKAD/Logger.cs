@@ -4,17 +4,17 @@ using System.IO;
 
 namespace TestTaskUKAD
 {
-    class Logger
+    static class Logger
     {
-        const string FilePath = @"Logs.log";
+        static readonly string FilePath = string.Concat(@"Log_", DateTime.Now.ToString("yyyy-MM-dd___HH-mm-ss"), ".log");
+        static private string dateTime { get { return DateTime.Now.ToString("yyyy:MM:dd-HH:mm:ss"); } }
         public static void Log(string logMessage)
         {
-
             try
             {
                 var w = new StreamWriter(FilePath, true);
                 w.Write("\r\nLog Entry : ");
-                w.WriteLine($"{DateTime.Now.ToLongTimeString()} {DateTime.Now.ToLongDateString()}");
+                w.WriteLine($"{dateTime}");
                 w.WriteLine("  :");
                 w.WriteLine($"  :{logMessage}");
                 w.WriteLine("-------------------------------");
@@ -24,7 +24,6 @@ namespace TestTaskUKAD
             {
                 Console.WriteLine("WARNING! Logger failure!");
             }
-
         }
 
         public static void Log(string logMessage, List<Uri> list)
@@ -33,12 +32,14 @@ namespace TestTaskUKAD
             {
                 var w = new StreamWriter(FilePath, true);
                 w.Write("\r\nLog Entry : ");
-                w.WriteLine($"{DateTime.Now.ToLongTimeString()} {DateTime.Now.ToLongDateString()}");
+                w.WriteLine($"{dateTime}");
                 w.WriteLine("  :");
                 w.WriteLine($"  :{logMessage}");
+                int counter = 1;
                 foreach (var l in list)
                 {
-                    w.WriteLine(l.ToString());
+                    w.WriteLine(counter + ") " + l.ToString());
+                    counter++;
                 }
                 w.WriteLine("-------------------------------");
                 w.Close();
@@ -55,12 +56,14 @@ namespace TestTaskUKAD
             {
                 var w = new StreamWriter(FilePath, true);
                 w.Write("\r\nLog Entry : ");
-                w.WriteLine($"{DateTime.Now.ToLongTimeString()} {DateTime.Now.ToLongDateString()}");
+                w.WriteLine($"{dateTime}");
                 w.WriteLine("  :");
                 w.WriteLine($"  :{logMessage}");
+                int counter = 1;
                 foreach (var d in dict)
                 {
-                    w.WriteLine(d.Value + "_____" + d.Key.ToString());
+                    w.WriteLine(counter + ") " + d.Value + "_____" + d.Key.ToString());
+                    counter++;
                 }
                 w.WriteLine("-------------------------------");
                 w.Close();
@@ -69,25 +72,6 @@ namespace TestTaskUKAD
             {
                 Console.WriteLine("WARNING! Logger failure!");
             }
-        }
-
-        public static string ReadFile()
-        {
-            try
-            {
-                var r = new StreamReader(FilePath);
-                var outputList = string.Empty;
-
-                outputList = r.ReadToEnd();
-                return outputList;
-            }
-            catch (Exception)
-            {
-                Logger.Log($"File {FilePath} reading failure.");
-                Console.WriteLine($"File {FilePath} reading failure.");
-                return string.Empty;
-            }
-
         }
     }
 }

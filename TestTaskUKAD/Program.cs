@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +9,7 @@ namespace TestTaskUKAD
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             Uri inputUri;
 
@@ -17,9 +18,8 @@ namespace TestTaskUKAD
                 try
                 {
                     Console.WriteLine($"Enter the full url, please");
-                    //input: user enters web site url
                     inputUri = new Uri(Console.ReadLine());
-                    Logger.Log("Inputting uri completed.");
+                    Logger.Log($"Input url: . {inputUri}");
                     Console.Clear();
 
                     break;
@@ -32,82 +32,86 @@ namespace TestTaskUKAD
                     Console.Clear();
                 }
             }
-
-            Console.WriteLine("Warning! Url list is limited because i had a problem with app productivity, \nyou can delete Class Limiter and links to him. Press any key");
-            Console.ReadKey();
-            Console.Clear();
-
             Console.WriteLine("WebSite url: " + inputUri.ToString());
 
             using (var observer = new WebSiteObserver(inputUri))
             {
                 //applications determines all urls on web site (without using sitemap.xml)
-                var webSiteUriList = observer.WebSiteUries(inputUri);
+
+                var crawlerSiteUriList = await observer.WebSiteUries(inputUri);
+
 
 
                 //application merges the list from previous step with urls found in sitemap.xml (if it exists)
-                var mergedUriList = new List<Uri>();
-                var sitemapUriList = observer.SiteMapUries();
+                var sitemapUriList = await observer.SiteMapUries();
+                var mergedUriList = new List<Uri>(crawlerSiteUriList);
                 mergedUriList.AddRange(sitemapUriList);
-                mergedUriList.AddRange(webSiteUriList);
+                mergedUriList = mergedUriList.Distinct().ToList();
 
-
-                //application output list with urls which exists in sitemap and doesn’t on web site pages
-                Console.WriteLine("\nExists on SiteMap only\n\n");
-                var sitemapListBuffer = new List<Uri>();
-                sitemapListBuffer.AddRange(sitemapUriList);
-                foreach (var uri in webSiteUriList)
+                if (sitemapUriList.Count > 0)
                 {
-                    sitemapListBuffer.Remove(uri);
+                    //application output list with urls which exists in sitemap and doesn’t on web site pages
+                    Console.WriteLine("\nExtracted from SiteMap\n\n");
+
+                    var sitemapListBuffer = new List<Uri>(sitemapUriList);
+                    foreach (var uri in crawlerSiteUriList)
+                    {
+                        sitemapListBuffer.Remove(uri);
+                    }
+
+                    int c1 = 1;
+                    foreach (var uri in sitemapListBuffer)
+                    {
+                        Console.WriteLine(uri.ToString());
+                        c1++;
+                    }
                 }
-
-                foreach (var uri in sitemapListBuffer)
+                else
                 {
-                    Console.WriteLine(uri.ToString());
+                    Console.WriteLine("\nSitemap not found or empty\n\n");
                 }
 
 
                 //application output list with urls which exists on web site but doesn’t in sitemap.xml
-                Console.WriteLine("\nExists on WebSite only\n\n");
+                Console.WriteLine("\nDetermined by crawler\n\n");
 
-                var websiteListbuffer = new List<Uri>();
-                websiteListbuffer.AddRange(webSiteUriList);
+                var websiteListbuffer = new List<Uri>(crawlerSiteUriList);
                 foreach (var uri in sitemapUriList)
                 {
                     websiteListbuffer.Remove(uri);
                 }
 
+                int c2 = 1;
                 foreach (var uri in websiteListbuffer)
                 {
-                    Console.WriteLine(uri.ToString());
+                    Console.WriteLine("{0}) {1}", c2, uri.ToString());
+                    c2++;
                 }
+
 
 
                 // all urls should be queried and the list with url
                 // and response time for each page should be outputted(output should be sorted by timing)
-                Console.WriteLine("\nSorted list response time\n\n");
-
-                var mergedUriesDistincted = mergedUriList.Distinct<Uri>();
-
-                var uriesListToUri = new List<Uri>();
-                foreach (var uri in mergedUriesDistincted)
-                {
-                    uriesListToUri.Add(uri);
-                }
-
-                var responceTimeList = observer.ResponseTimeSaver(uriesListToUri);
+                Console.WriteLine("\nSorted list response time\n\n");              
+              
+                var responceTimeList = observer.ResponseTimeSaver(mergedUriList);
                 var responseSorted = responceTimeList.ToList<KeyValuePair<Uri, double>>();
                 responseSorted.Sort(delegate (KeyValuePair<Uri, double> pair1, KeyValuePair<Uri, double> pair2)
                 {
                     return pair1.Value.CompareTo(pair2.Value);
                 });
 
+                int counter = 1;
                 foreach (var resp in responseSorted)
                 {
-                    Console.WriteLine("{0}ms_____{1}", Math.Round(resp.Value), resp.Key);
+                    Console.WriteLine("{2}) {1}_____{0}ms", Math.Round(resp.Value), resp.Key, counter);
+                    counter++;
                 }
 
-                //its all
+                //Count of urls output
+                Console.WriteLine("\nFounded by crawler: {0}", crawlerSiteUriList.Count);
+                Console.WriteLine("\nFounded in sitemap: {0}", sitemapUriList.Count);
+
                 Console.WriteLine("\nPress any key to exit");
                 Console.ReadKey();
             }
