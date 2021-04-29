@@ -39,15 +39,14 @@ namespace TestTaskUKAD
 
             while (uncheckedList.Count > 0)
             {
-                if ((uncheckedList[0].Scheme == BaseUri.Scheme) && (uncheckedList[0].Host == BaseUri.Host) && (!VisitedListLocal.Contains(uncheckedList[0])))
+                if ((uncheckedList[0].Scheme == BaseUri.Scheme) && (uncheckedList[0].Host == BaseUri.Host) && !(VisitedListLocal.Contains(uncheckedList[0])))
                 {
-                    var a = await WebPageUries(uncheckedList[0]);
-                    if (a.Count > 0)
+                    var pageUriList = await WebPageUries(uncheckedList[0]);
+                    if (pageUriList.Count > 0)
                     {
-                        uncheckedList.AddRange(a);
+                        uncheckedList.AddRange(pageUriList);
                         VisitedListLocal.Add(uncheckedList[0]);
                     }
-                    else break;
                 }
                 uncheckedList.RemoveAt(0);
                 uncheckedList = uncheckedList.Distinct().ToList();
@@ -58,31 +57,25 @@ namespace TestTaskUKAD
 
         public async Task<List<Uri>> SiteMapUries()
         {
-            var uriList = new List<Uri>();
+            var client = new WebClient();
             var robotsUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "robots.txt", "").Uri.ToString();
-            using (var response = await Client.GetAsync(robotsUri, HttpCompletionOption.ResponseContentRead))
+            var robotsFileText = string.Empty;
+            robotsFileText = client.DownloadString(robotsUri).ToLower();
+            Logger.Log($"WebClient {robotsUri} loading done.");
+            var uriList = new List<Uri>();
+            if (robotsFileText.Length > 0)
             {
-                if (response.IsSuccessStatusCode)
+                var siteMapAddresList = Regex.Matches(robotsFileText, @"(?<=sitemap:\s).+");
+                foreach (Match addres in siteMapAddresList)
                 {
-                    var robotsFileText = await response.Content.ReadAsStringAsync();
-                    Logger.Log($"{robotsUri} loading done.");
-
-
-                    if (robotsFileText.Length > 0)
-                    {
-                        var siteMapAddresList = Regex.Matches(robotsFileText, @"(?<=sitemap:\s).+");
-                        foreach (Match addres in siteMapAddresList)
-                        {
-                            uriList.AddRange(ExtractUriList(new Uri(addres.Value)));
-                        }
-                    }
-                    else
-                    {
-                        uriList = ExtractUriList(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "sitemap.xml", "").Uri);
-                    }
-                    Logger.Log("SiteMap url list created.", uriList);
+                    uriList.AddRange(ExtractUriList(new Uri(addres.Value)));
                 }
             }
+            else
+            {
+                uriList = ExtractUriList(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "sitemap.xml", "").Uri);
+            }
+            Logger.Log("SiteMap url list created.", uriList);
             return uriList;
         }
 
