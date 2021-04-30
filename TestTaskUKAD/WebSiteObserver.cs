@@ -34,6 +34,7 @@ namespace TestTaskUKAD
         {
             var VisitedListLocal = new List<Uri>();
 
+            
             VisitedListLocal.Add(uri);
             var uncheckedList = await WebPageUries(uri);           
 
@@ -45,7 +46,11 @@ namespace TestTaskUKAD
                     if (pageUriList.Count > 0)
                     {
                         uncheckedList.AddRange(pageUriList);
-                        VisitedListLocal.Add(uncheckedList[0]);
+
+                        if(uncheckedList[0].ToString().Contains("#"))
+                        {
+                            VisitedListLocal.Add(uncheckedList[0]);
+                        }
                     }
                 }
                 uncheckedList.RemoveAt(0);
@@ -57,25 +62,29 @@ namespace TestTaskUKAD
 
         public async Task<List<Uri>> SiteMapUries()
         {
-            var client = new WebClient();
-            var robotsUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "robots.txt", "").Uri.ToString();
-            var robotsFileText = string.Empty;
-            robotsFileText = client.DownloadString(robotsUri).ToLower();
-            Logger.Log($"WebClient {robotsUri} loading done.");
             var uriList = new List<Uri>();
-            if (robotsFileText.Length > 0)
+            var robotsUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "robots.txt", "").Uri.ToString();
+            using (var response = await Client.GetAsync(robotsUri, HttpCompletionOption.ResponseContentRead))
             {
-                var siteMapAddresList = Regex.Matches(robotsFileText, @"(?<=sitemap:\s).+");
-                foreach (Match addres in siteMapAddresList)
+                if (response.IsSuccessStatusCode)
                 {
-                    uriList.AddRange(ExtractUriList(new Uri(addres.Value)));
+                    var robotsFileText = await response.Content.ReadAsStringAsync();
+                    Logger.Log($"{robotsUri} loading done.");
+                    if (robotsFileText.Length > 0)
+                    {
+                        var siteMapAddresList = Regex.Matches(robotsFileText.ToLower(), @"(?<=sitemap:\s).+");
+                        foreach (Match addres in siteMapAddresList)
+                        {
+                            uriList.AddRange(ExtractUriList(new Uri(addres.Value)));
+                        }
+                    }
+                    else
+                    {
+                        uriList = ExtractUriList(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "sitemap.xml", "").Uri);
+                    }
+                    Logger.Log("SiteMap url list created.", uriList);
                 }
             }
-            else
-            {
-                uriList = ExtractUriList(new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: "sitemap.xml", "").Uri);
-            }
-            Logger.Log("SiteMap url list created.", uriList);
             return uriList;
         }
 
@@ -111,18 +120,15 @@ namespace TestTaskUKAD
             try
             {
                 xmlDocument.Load(sitemapUri.ToString());
-                Logger.Log($"XmlDocument {sitemapUri.ToString()} loading done.");
-
                 var xmlNodeList = xmlDocument.GetElementsByTagName("loc");
                 foreach (XmlNode xmlNode in xmlNodeList)
                 {
                     uriList.Add(new Uri(xmlNode.InnerText.ToString()));
                 }
-                Logger.Log($"Url list from SiteMap {sitemapUri.ToString()} extracted.", uriList);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                Logger.Log("Extraction urls from SiteMap files failure!");
+                Logger.Log(ex.Message);
             }
             return uriList;
         }
