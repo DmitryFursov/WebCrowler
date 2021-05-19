@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +16,9 @@ namespace TestTaskUKAD
             {
                 try
                 {
+
+
+                    // input: user enters web site url
                     Console.WriteLine($"Enter the full url, please");
                     inputUri = new Uri(Console.ReadLine());
                     Logger.Log($"Input url: . {inputUri}");
@@ -34,68 +36,92 @@ namespace TestTaskUKAD
             }
             Console.WriteLine("WebSite url: " + inputUri.ToString());
 
-            using (var observer = new WebSiteObserver(inputUri))
+            using (var crawler = new AsyncCrawler(inputUri))
             {
-                //applications determines all urls on web site (without using sitemap.xml)
-
-                var crawlerSiteUriList = await observer.WebSiteUries(inputUri);
+                Console.WriteLine("Running WebCrowler...");
 
 
+                //application should find all urls(html documents)
+                //on website crawling all pages(without using sitemap.xml)
+                var taskCrawler = await Task.Factory.StartNew(() => crawler.CrawlerAsync());
 
-                //application merges the list from previous step with urls found in sitemap.xml (if it exists)
-                var sitemapUriList = await observer.SiteMapUries();
-                var mergedUriList = new List<Uri>(crawlerSiteUriList);
+                var taskSiteMap = await Task.Factory.StartNew(() => crawler.SiteMapUriesAsync());             
+               
+                try
+                {
+                    Task.WaitAll(new[] { taskSiteMap, taskCrawler });
+                    
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                }
+                var crawlerUriList = taskCrawler.Result;
+                var counterCrawler = 1;
+                foreach (var uri in crawlerUriList)
+                {
+                    Console.WriteLine(counterCrawler+") "+uri.ToString());
+                    counterCrawler++;
+                }
+
+                
+                
+                //application merges the list from the previous step with urls found in sitemap.xml
+                //(if it exists)
+                var sitemapUriList = taskSiteMap.Result;                
+                
+                var mergedUriList = new List<Uri>(crawlerUriList);
                 mergedUriList.AddRange(sitemapUriList);
                 mergedUriList = mergedUriList.Distinct().ToList();
 
+
+                //application should output a list with urls that exists in sitemap
+                //and doesn’t on website pages
+                Console.WriteLine("\nDetermined in SiteMap\n");
                 if (sitemapUriList.Count > 0)
                 {
-                    //application output list with urls which exists in sitemap and doesn’t on web site pages
-                    Console.WriteLine("\nExtracted from SiteMap\n\n");
-
                     var sitemapListBuffer = new List<Uri>(sitemapUriList);
-                    foreach (var uri in crawlerSiteUriList)
+                    foreach (var uri in crawlerUriList)
                     {
                         sitemapListBuffer.Remove(uri);
                     }
 
-                    int c1 = 1;
+                    int counterSiteMap = 1;
                     foreach (var uri in sitemapListBuffer)
                     {
-                        Console.WriteLine(uri.ToString());
-                        c1++;
+                        Console.WriteLine(counterSiteMap + ") " + uri.ToString());
+                        counterSiteMap++;
                     }
                 }
                 else
                 {
-                    Console.WriteLine("\nSitemap not found or empty\n\n");
+                    Console.WriteLine("SiteMap is empty or not exists.");
                 }
 
 
                 //application output list with urls which exists on web site but doesn’t in sitemap.xml
-                Console.WriteLine("\nDetermined by crawler\n\n");
+                Console.WriteLine("\nDetermined by crawler\n");
 
-                var websiteListbuffer = new List<Uri>(crawlerSiteUriList);
+                var websiteListbuffer = new List<Uri>(crawlerUriList);
                 foreach (var uri in sitemapUriList)
                 {
                     websiteListbuffer.Remove(uri);
                 }
 
-                int c2 = 1;
+                int counterOnlyCrawler = 1;
                 foreach (var uri in websiteListbuffer)
                 {
-                    Console.WriteLine("{0}) {1}", c2, uri.ToString());
-                    c2++;
+                    Console.WriteLine(counterOnlyCrawler + ") " + uri.ToString());
+                    counterOnlyCrawler++;
                 }
-
 
 
                 // all urls should be queried and the list with url
                 // and response time for each page should be outputted(output should be sorted by timing)
-                Console.WriteLine("\nSorted list response time\n\n");              
-              
-                var responceTimeList = observer.ResponseTimeSaver(mergedUriList);
-                var responseSorted = responceTimeList.ToList<KeyValuePair<Uri, double>>();
+                Console.WriteLine("\nSorted list response time. Loading...\n\n");
+
+                var responseTimeList = crawler.ResponseTimeSaverAsync(mergedUriList).Result;
+                var responseSorted = responseTimeList.ToList<KeyValuePair<Uri, double>>();
                 responseSorted.Sort(delegate (KeyValuePair<Uri, double> pair1, KeyValuePair<Uri, double> pair2)
                 {
                     return pair1.Value.CompareTo(pair2.Value);
@@ -104,18 +130,19 @@ namespace TestTaskUKAD
                 int counter = 1;
                 foreach (var resp in responseSorted)
                 {
-                    Console.WriteLine("{2}) {1}_____{0}ms", Math.Round(resp.Value), resp.Key, counter);
+                    Console.WriteLine("{2}) {1}\t{0}ms", Math.Round(resp.Value), resp.Key, counter);
                     counter++;
                 }
 
-                //Count of urls output
-                Console.WriteLine("\nFounded by crawler: {0}", crawlerSiteUriList.Count);
-                Console.WriteLine("\nFounded in sitemap: {0}", sitemapUriList.Count);
+                //application should return how many urls have been found in sitemap.xml
+                //and how many urls have been found crawling website
 
-                Console.WriteLine("\nPress any key to exit");
-                Console.ReadKey();
+                Console.WriteLine("\nFounded by crawler: {0}", crawlerUriList.Count);
+                Console.WriteLine("\nFounded in sitemap: {0}", sitemapUriList.Count);
             }
 
+            Console.WriteLine("\nPress any key to exit");
+            Console.ReadKey();
         }
     }
 }

@@ -22,7 +22,7 @@ namespace TestTaskUKAD
             }
             catch (Exception)
             {
-                Console.WriteLine("WARNING! Logger failure!");
+                //Console.WriteLine("WARNING! Logger failure!");
             }
         }
 
@@ -46,7 +46,7 @@ namespace TestTaskUKAD
             }
             catch (Exception)
             {
-                Console.WriteLine("WARNING! Logger failure!");
+                //Console.WriteLine("WARNING! Logger failure!");
             }
         }
 
@@ -70,7 +70,7 @@ namespace TestTaskUKAD
             }
             catch (Exception)
             {
-                Console.WriteLine("WARNING! Logger failure!");
+                //Console.WriteLine("WARNING! Logger failure!");
             }
         }
     }
