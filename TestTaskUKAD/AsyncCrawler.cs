@@ -26,7 +26,7 @@ namespace TestTaskUKAD
 
         private ConcurrentQueue<Uri> queue;
 
-        private ConcurrentDictionary<Uri, double> ResponseTimeDictionary;
+        private ConcurrentDictionary<Uri, long> ResponseTimeDictionary;
         public HttpClient Client { get; set; }
 
         public AsyncCrawler(Uri baseUri)
@@ -39,7 +39,7 @@ namespace TestTaskUKAD
             queue = new ConcurrentQueue<Uri>();
             checkedList = new ConcurrentQueue<Uri>();
             queue.Enqueue(BaseUri);
-            ResponseTimeDictionary = new ConcurrentDictionary<Uri, double>();
+            ResponseTimeDictionary = new ConcurrentDictionary<Uri, long>();
         }
 
 
@@ -108,76 +108,87 @@ namespace TestTaskUKAD
                 catch
                 { }
 
-                
+
                 if (queue.Count > 0)
                 {
                     tasks.Add(ExtractUriFromPage());
-                }
-                if (queue.Count > maxTasks && tasks.Count < maxTasks)
-                {
-                    tasks.Add(ExtractUriFromPage());
+                    if (queue.Count > maxTasks && tasks.Count < maxTasks)
+                    {
+                        tasks.Add(ExtractUriFromPage());
+                    }
+
                 }
             }
             return checkedList.ToList();
         }
-        C
+
         private async Task<bool> ExtractUriFromPage()
         {
             if (queue.TryDequeue(out var u))
             {
-                if ((u.Scheme == BaseUri.Scheme) && (u.Host == BaseUri.Host))
+                if (!checkedList.Contains(u))
                 {
-                    try
+
+                    if ((u.Scheme == BaseUri.Scheme) && (u.Host == BaseUri.Host))
                     {
-                        var pageText = string.Empty;
-                        using (var response = await Client.GetAsync(u, HttpCompletionOption.ResponseHeadersRead))
+                        try
                         {
-                            if (response.IsSuccessStatusCode && response.Content.Headers.ContentType.MediaType == "text/html")
+                            var pageText = string.Empty;
+                            using (var response = await Client.GetAsync(u, HttpCompletionOption.ResponseHeadersRead))
                             {
-                                pageText = await response.Content.ReadAsStringAsync();
-                                Regex regex = new Regex(@"href\s*=\s*(?:[""'](?<1>[^""']*)[""']|(?<1>\S+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-                                MatchCollection matches = regex.Matches(pageText);
-                                if (matches.Count > 0)
+                                if (response.IsSuccessStatusCode && response.Content.Headers.ContentType.MediaType == "text/html")
                                 {
-                                    foreach (Match match in matches)
+                                    pageText = await response.Content.ReadAsStringAsync();
+                                    Regex regex = new Regex(@"href\s*=\s*(?:[""'](?<1>[^""']*)[""']|(?<1>\S+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                                    MatchCollection matches = regex.Matches(pageText);
+                                    if (matches.Count > 0)
                                     {
-                                        var m = match.Groups[1].ToString();
-                                        var tempUri = u;
-                                        if (!m.Contains("#")
-                                            && (!m.EndsWith(".css")) // отсеиваем "лишние" URI
-                                            && (!m.StartsWith("javascript"))
-                                            )
+                                        foreach (Match match in matches)
                                         {
-                                            if (IsFullUri(m))
+                                            var m = match.Groups[1].ToString();
+                                            var tempUri = u;
+                                            if (!m.Contains("#")
+                                                && (!m.EndsWith(".css")) // отсеиваем "лишние" URI
+                                                && (!m.StartsWith("javascript"))
+                                                && (!m.EndsWith(".apk"))
+                                                && (!m.EndsWith(".png"))
+                                                && (!m.EndsWith(".7z"))
+                                                && (!m.EndsWith(".zip"))
+                                                && (!m.EndsWith(".rar"))
+                                                )
                                             {
-                                                tempUri = new Uri(m);
-                                            }
-                                            else
-                                            {
-                                                tempUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: m, "").Uri;
-                                            }
-                                            if (!queue.Contains(tempUri))
-                                            {
-                                                queue.Enqueue(tempUri); 
-                                                                        
+                                                if (IsFullUri(m))
+                                                {
+                                                    tempUri = new Uri(m);
+                                                }
+                                                else
+                                                {
+                                                    tempUri = new UriBuilder(scheme: BaseUri.Scheme, host: BaseUri.Host, port: BaseUri.Port, path: m, "").Uri;
+                                                }
+                                                if (!queue.Contains(tempUri))
+                                                {
+                                                    queue.Enqueue(tempUri);
+
+                                                }
                                             }
                                         }
                                     }
+
                                 }
-
                             }
+
                         }
-
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(ex.Message);
+                            return false;
+                        }
+                        checkedList.Enqueue(u);
+                        Logger.Log(u.ToString());
+                        Console.WriteLine("Crawler found URL: {0} found. Total {1}", u, checkedList.Count);
+                        return true;
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex.Message);
-                    }
-                    checkedList.Enqueue(u);
-                    Logger.Log(u.ToString());
-                    checkedList.Distinct();
 
-                    return true;
                 }
             }
             return false;
@@ -196,7 +207,7 @@ namespace TestTaskUKAD
             }
         }
 
-        public async Task<ConcurrentDictionary<Uri, double>> ResponseTimeSaverAsync(List<Uri> uriList)
+        public async Task<Dictionary<Uri, long>> ResponseTimeSaverAsync(List<Uri> uriList)
         {
             var tasks = new HashSet<Task>();
             while (uriList.Count > 0 || tasks.Count > 0)
@@ -208,25 +219,24 @@ namespace TestTaskUKAD
                 }
                 catch
                 { }
-
                 if (uriList.Count > 0)
                 {
                     tasks.Add(PageResponseTime(uriList[0]));
                     uriList.RemoveAt(0);
-                }
-                if (uriList.Count > maxTasks && tasks.Count < maxTasks)
-                {
-                    tasks.Add(PageResponseTime(uriList[0]));
-                    uriList.RemoveAt(0);
+                    if (uriList.Count > maxTasks && tasks.Count < maxTasks)
+                    {
+                        tasks.Add(PageResponseTime(uriList[0]));
+                        uriList.RemoveAt(0);
+                    }
                 }
             }
-            return ResponseTimeDictionary;
+            return ResponseTimeDictionary.ToDictionary(k => k.Key, k => k.Value);
         }
 
         private async Task<bool> PageResponseTime(Uri uri)
         {
             var stopwatch = new Stopwatch();
-            double responseTime = -1; // если останется -1, то это признак ошибки
+            long responseTime = -1; // если останется -1, то это признак ошибки
             stopwatch.Start();
             try
             {
@@ -239,9 +249,10 @@ namespace TestTaskUKAD
             }
             stopwatch.Stop();
 
-            responseTime = stopwatch.Elapsed.TotalMilliseconds;
+            responseTime = stopwatch.ElapsedMilliseconds;
             stopwatch.Reset();
             ResponseTimeDictionary.AddOrUpdate(uri, responseTime, (key, oldValue) => responseTime);
+            //Console.WriteLine("{0}\t{1}",uri.ToString(), responseTime);
 
             return true;
         }
