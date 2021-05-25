@@ -148,13 +148,16 @@ namespace TestTaskUKAD
                                             var m = match.Groups[1].ToString();
                                             var tempUri = u;
                                             if (!m.Contains("#")
-                                                && (!m.EndsWith(".css")) // отсеиваем "лишние" URI
                                                 && (!m.StartsWith("javascript"))
+                                                && (!m.EndsWith(".css")) // отсеиваем "лишние" URI                                                
                                                 && (!m.EndsWith(".apk"))
                                                 && (!m.EndsWith(".png"))
                                                 && (!m.EndsWith(".7z"))
                                                 && (!m.EndsWith(".zip"))
                                                 && (!m.EndsWith(".rar"))
+                                                && (!m.EndsWith(".woff"))
+                                                && (!m.EndsWith(".ttf"))
+                                                && (!m.EndsWith(".jpg"))
                                                 )
                                             {
                                                 if (IsFullUri(m))
