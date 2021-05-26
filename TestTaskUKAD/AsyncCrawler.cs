@@ -172,7 +172,6 @@ namespace TestTaskUKAD
                                                 && (!m.EndsWith(".woff"))
                                                 && (!m.EndsWith(".ttf"))
                                                 && (!m.EndsWith(".jpg"))
-                                                && (!m.Contains(".css"))
                                                 )
                                             {
                                                 if (IsFullUri(m))
