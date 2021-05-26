@@ -29,6 +29,8 @@ namespace TestTaskUKAD
         private ConcurrentDictionary<Uri, long> ResponseTimeDictionary;
         public HttpClient Client { get; set; }
 
+        //private List<string> BadHtlms;
+
         public AsyncCrawler(Uri baseUri)
         {
             BaseUri = baseUri;
@@ -40,6 +42,17 @@ namespace TestTaskUKAD
             checkedList = new ConcurrentQueue<Uri>();
             queue.Enqueue(BaseUri);
             ResponseTimeDictionary = new ConcurrentDictionary<Uri, long>();
+            //&& (!m.StartsWith("javascript"))
+            //                                    && (!m.EndsWith(".css")) // отсеиваем "лишние" URI                                                
+            //                                    && (!m.EndsWith(".apk"))
+            //                                    && (!m.EndsWith(".png"))
+            //                                    && (!m.EndsWith(".7z"))
+            //                                    && (!m.EndsWith(".zip"))
+            //                                    && (!m.EndsWith(".rar"))
+            //                                    && (!m.EndsWith(".woff"))
+            //                                    && (!m.EndsWith(".ttf"))
+            //                                    && (!m.EndsWith(".jpg"))
+            //BadHtlms = new List<string>() { "javascript" , };
         }
 
 
@@ -124,11 +137,12 @@ namespace TestTaskUKAD
 
         private async Task<bool> ExtractUriFromPage()
         {
+            
             if (queue.TryDequeue(out var u))
             {
+                u = (new Uri(new UriBuilder(u.Scheme, u.Host, u.Port, u.AbsolutePath).ToString()));
                 if (!checkedList.Contains(u))
                 {
-
                     if ((u.Scheme == BaseUri.Scheme) && (u.Host == BaseUri.Host))
                     {
                         try
@@ -158,6 +172,7 @@ namespace TestTaskUKAD
                                                 && (!m.EndsWith(".woff"))
                                                 && (!m.EndsWith(".ttf"))
                                                 && (!m.EndsWith(".jpg"))
+                                                && (!m.Contains(".css"))
                                                 )
                                             {
                                                 if (IsFullUri(m))
@@ -170,7 +185,7 @@ namespace TestTaskUKAD
                                                 }
                                                 if (!queue.Contains(tempUri))
                                                 {
-                                                    queue.Enqueue(tempUri);
+                                                    queue.Enqueue(new Uri(new UriBuilder(tempUri.Scheme, tempUri.Host ,tempUri.Port, tempUri.AbsolutePath).ToString()));
 
                                                 }
                                             }
@@ -186,7 +201,7 @@ namespace TestTaskUKAD
                             Console.WriteLine(ex.Message);
                             return false;
                         }
-                        checkedList.Enqueue(u);
+                        checkedList.Enqueue(new Uri(new UriBuilder(u.Scheme, u.Host, u.Port, u.AbsolutePath).ToString()));
                         Logger.Log(u.ToString());
                         Console.WriteLine("Crawler found URL: {0} found. Total {1}", u, checkedList.Count);
                         return true;
